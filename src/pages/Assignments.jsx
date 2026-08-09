@@ -9,6 +9,13 @@ const emptyForm = {
   is_completed: false,
 }
 
+const emptyEditForm = {
+  title: '',
+  class_name: '',
+  due_date: '',
+  description: '',
+}
+
 function formatDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
@@ -17,12 +24,45 @@ function formatDate(dateStr) {
   })
 }
 
+// Uploads a file to the "assignments" storage bucket and returns its public URL.
+async function uploadAssignmentFile(file) {
+  const ext = file.name.split('.').pop()
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('assignments')
+    .upload(path, file, { upsert: false })
+
+  if (uploadError) throw uploadError
+
+  const { data } = supabase.storage.from('assignments').getPublicUrl(path)
+  return data.publicUrl
+}
+
+function getFileName(url) {
+  if (!url) return ''
+  try {
+    const decoded = decodeURIComponent(url.split('/').pop() ?? '')
+    // strip the "<timestamp>-<random>." prefix we add on upload
+    return decoded.replace(/^\d+-[a-z0-9]+\./, '')
+  } catch {
+    return 'attached file'
+  }
+}
+
 export default function Assignments() {
   const { isAdmin } = useAdmin()
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
+
+  // Detail modal state
+  const [selected, setSelected] = useState(null) // the assignment currently open in the modal
+  const [isEditing, setIsEditing] = useState(false)
+  const [editForm, setEditForm] = useState(emptyEditForm)
+  const [editFile, setEditFile] = useState(null)
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const loadAssignments = useCallback(async () => {
     const { data, error } = await supabase
@@ -37,6 +77,13 @@ export default function Assignments() {
   useEffect(() => {
     loadAssignments()
   }, [loadAssignments])
+
+  // Keep the modal's data in sync if the underlying list refreshes (e.g. after a save).
+  useEffect(() => {
+    if (!selected) return
+    const fresh = assignments.find((a) => a.id === selected.id)
+    if (fresh) setSelected(fresh)
+  }, [assignments, selected?.id])
 
   const grouped = useMemo(() => {
     return assignments.reduce((acc, item) => {
@@ -78,6 +125,73 @@ export default function Assignments() {
       return
     }
     loadAssignments()
+  }
+
+  async function handleDelete(item) {
+    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return
+
+    const { error } = await supabase.from('assignments').delete().eq('id', item.id)
+    if (error) {
+      alert(`Could not delete: ${error.message}`)
+      return
+    }
+    if (selected?.id === item.id) closeModal()
+    loadAssignments()
+  }
+
+  function openModal(item) {
+    setSelected(item)
+    setIsEditing(false)
+  }
+
+  function closeModal() {
+    setSelected(null)
+    setIsEditing(false)
+    setEditFile(null)
+  }
+
+  function startEditing(item) {
+    setEditForm({
+      title: item.title ?? '',
+      class_name: item.class_name ?? '',
+      due_date: item.due_date ?? '',
+      description: item.description ?? '',
+    })
+    setEditFile(null)
+    setIsEditing(true)
+  }
+
+  async function handleEditSave(e) {
+    e.preventDefault()
+    setSavingEdit(true)
+
+    try {
+      let file_url = selected.file_url ?? null
+      if (editFile) {
+        file_url = await uploadAssignmentFile(editFile)
+      }
+
+      const { error } = await supabase
+        .from('assignments')
+        .update({
+          title: editForm.title.trim(),
+          class_name: editForm.class_name.trim(),
+          due_date: editForm.due_date,
+          description: editForm.description.trim() || null,
+          file_url,
+        })
+        .eq('id', selected.id)
+
+      if (error) throw error
+
+      setIsEditing(false)
+      setEditFile(null)
+      loadAssignments()
+    } catch (err) {
+      alert(`Could not save changes: ${err.message}`)
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   return (
@@ -131,6 +245,9 @@ export default function Assignments() {
           >
             {submitting ? 'Adding...' : 'Add Assignment'}
           </button>
+          <p className="mt-2 text-xs text-indigo-700/70">
+            Add a description or attach a file afterward by clicking into the assignment.
+          </p>
         </form>
       )}
 
@@ -150,7 +267,8 @@ export default function Assignments() {
                 {items.map((item) => (
                   <li
                     key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                    onClick={() => openModal(item)}
+                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-indigo-300 hover:shadow-md"
                   >
                     <div>
                       <p
@@ -162,29 +280,238 @@ export default function Assignments() {
                       </p>
                       <p className="text-sm text-slate-500">Due {formatDate(item.due_date)}</p>
                     </div>
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.is_completed
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {item.is_completed ? 'Done' : 'Pending'}
-                    </span>
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => toggleComplete(item.id, item.is_completed)}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          item.is_completed
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
                       >
-                        Toggle status
-                      </button>
-                    )}
+                        {item.is_completed ? 'Done' : 'Pending'}
+                      </span>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleComplete(item.id, item.is_completed)
+                            }}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                          >
+                            Toggle status
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openModal(item)
+                              startEditing(item)
+                            }}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(item)
+                            }}
+                            className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
             </section>
           ))}
+        </div>
+      )}
+
+      {selected && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {!isEditing ? (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-slate-900">{selected.title}</h2>
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="text-slate-400 hover:text-slate-600"
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <dl className="mt-4 space-y-3 text-sm">
+                  <div>
+                    <dt className="font-medium text-slate-500">Class</dt>
+                    <dd className="text-slate-900">{selected.class_name}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-slate-500">Due Date</dt>
+                    <dd className="text-slate-900">{formatDate(selected.due_date)}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-slate-500">Status</dt>
+                    <dd className="text-slate-900">
+                      {selected.is_completed ? 'Completed' : 'Pending'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-slate-500">Description</dt>
+                    <dd className="whitespace-pre-wrap text-slate-900">
+                      {selected.description ? selected.description : (
+                        <span className="text-slate-400">No description added.</span>
+                      )}
+                    </dd>
+                  </div>
+                  {selected.file_url && (
+                    <div>
+                      <dt className="font-medium text-slate-500">Attached File</dt>
+                      <dd className="mt-1 flex flex-wrap gap-2">
+                        <a
+                          href={selected.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-slate-200"
+                        >
+                          Open {getFileName(selected.file_url)}
+                        </a>
+                        <a
+                          href={selected.file_url}
+                          download
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-slate-200"
+                        >
+                          Download
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+
+                {isAdmin && (
+                  <div className="mt-6 flex gap-2 border-t border-slate-100 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => startEditing(selected)}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(selected)}
+                      className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-slate-900">Edit Assignment</h2>
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="text-slate-400 hover:text-slate-600"
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleEditSave} className="mt-4 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-500">Title</label>
+                    <input
+                      required
+                      value={editForm.title}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500">Class</label>
+                    <input
+                      required
+                      value={editForm.class_name}
+                      onChange={(e) => setEditForm({ ...editForm, class_name: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500">Due Date</label>
+                    <input
+                      required
+                      type="date"
+                      value={editForm.due_date}
+                      onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500">Description</label>
+                    <textarea
+                      rows={4}
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      placeholder="Details about the assignment..."
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500">
+                      {selected.file_url ? 'Replace File' : 'Attach File'}
+                    </label>
+                    <input
+                      type="file"
+                      onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
+                      className="mt-1 w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700"
+                    />
+                    {selected.file_url && !editFile && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Current file: {getFileName(selected.file_url)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(false)}
+                      className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {savingEdit ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
