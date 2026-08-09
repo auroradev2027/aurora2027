@@ -4,8 +4,29 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
 
   try {
-    const { fileId } = req.body || {}
-    if (!fileId) return json(res, 400, { error: 'fileId is required' })
+    const { fileId: requestedFileId, uploadToken, name } = req.body || {}
+    let fileId = requestedFileId
+
+    // The browser can upload the final chunk successfully while CORS prevents
+    // it from reading Google's 200/201 response. When that happens, recover
+    // the Drive file server-side using the unique appProperties upload token.
+    if (!fileId && uploadToken) {
+      let file = null
+      for (let attempt = 0; attempt < 4 && !file; attempt += 1) {
+        const q = `appProperties has { key='classOrganizerUploadToken' and value='${uploadToken.replace(/'/g, "\\'")}' } and trashed = false`
+        const lookup = await driveApi(`/files?spaces=drive&q=${encodeURIComponent(q)}&pageSize=10&fields=files(id,name,mimeType,size,webViewLink,webContentLink)` )
+        const data = await lookup.json()
+        if (!lookup.ok) return json(res, lookup.status, { error: data.error?.message || 'Could not locate the uploaded Drive file' })
+        file = data.files?.[0] || null
+        if (!file && attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+      }
+      if (!file) {
+        return json(res, 409, { error: `The file was uploaded, but Google Drive has not made it searchable yet${name ? ` (${name})` : ''}. Please try the upload again.` })
+      }
+      fileId = file.id
+    }
+
+    if (!fileId) return json(res, 400, { error: 'fileId or uploadToken is required' })
 
     const permissionResponse = await driveApi(`/files/${encodeURIComponent(fileId)}/permissions`, {
       method: 'POST',

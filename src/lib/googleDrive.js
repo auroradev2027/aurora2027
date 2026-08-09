@@ -91,7 +91,15 @@ function uploadToResumableSession(file, uploadUrl, onProgress) {
         fail(new Error(message))
       }
 
-      xhr.onerror = () => fail(new Error('Failed to reach Google Drive while uploading the file.'))
+      // Google may complete the upload but block the browser from reading the
+      // final cross-origin response. In that case XHR fires `error` even though
+      // the file is already in Drive. The server will locate the file by the
+      // unique upload token returned by /api/drive/upload-session.
+      xhr.onerror = () => {
+        if (settled) return
+        settled = true
+        resolve({ uploadedWithoutResponse: true })
+      }
       xhr.ontimeout = () => fail(new Error('The Google Drive upload timed out.'))
       xhr.send(chunk)
     }
@@ -122,7 +130,11 @@ export async function uploadFileToGoogleDrive(file, { folderId, onProgress } = {
   return requestJson('/api/drive/finalize', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ fileId: uploaded.id }),
+    body: JSON.stringify({
+      fileId: uploaded.id || undefined,
+      uploadToken: session.uploadToken,
+      name: file.name,
+    }),
   })
 }
 

@@ -10,9 +10,11 @@ export default async function handler(req, res) {
     }
 
     const parents = folderId || process.env.GOOGLE_DRIVE_FOLDER_ID
+    const uploadToken = crypto.randomUUID()
     const metadata = {
       name,
       mimeType,
+      appProperties: { classOrganizerUploadToken: uploadToken },
       ...(parents ? { parents: [parents] } : {}),
     }
 
@@ -34,7 +36,7 @@ export default async function handler(req, res) {
     const uploadUrl = response.headers.get('location')
     if (!uploadUrl) return json(res, 502, { error: 'Google Drive did not return an upload session URL' })
 
-    return json(res, 200, { uploadUrl })
+    return json(res, 200, { uploadUrl, uploadToken })
   } catch (error) {
     return json(res, 500, { error: error.message || 'Could not create upload session' })
   }
