@@ -1,32 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
+import { useLanguage } from '../context/LanguageContext'
+import { getLocale } from '../lib/translations'
 
-const CYCLE_1 = {
-  label: 'Cycle 1',
-  days: 'Monday & Wednesday',
-  periods: [
-    { time: '8:00 am – 9:20 am', course: 'Sociología/Relaciones Internacionales', teacher: 'Alexandra' },
-    { time: '9:20 am – 10:40 am', course: 'Trigonometría Avanzada', teacher: 'Melo' },
-    { time: '10:40 am – 12:00 pm', course: 'Inglés Conversacional', teacher: 'Heldys' },
-    { time: '2:00 pm – 3:20 pm', course: 'Agroempresarismo', teacher: 'Yessenia' },
-    { time: '3:35 pm – 5:00 pm', course: 'Primeros Auxilios/Nutrición', teacher: 'Wilfredo' },
-  ],
-}
+// Times are universal (numeric), so they aren't translated — course names and
+// teacher names come from the translation dictionary / are proper nouns.
+const CYCLE_1_TIMES = [
+  '8:00 am – 9:20 am',
+  '9:20 am – 10:40 am',
+  '10:40 am – 12:00 pm',
+  '2:00 pm – 3:20 pm',
+  '3:35 pm – 5:00 pm',
+]
+const CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
+const CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
 
-const CYCLE_2 = {
-  label: 'Cycle 2',
-  days: 'Tuesday & Thursday',
-  periods: [
-    { time: '8:00 am – 9:20 am', course: 'Cálculo', teacher: 'Melo' },
-    { time: '9:20 am – 10:40 am', course: 'Educación Física', teacher: 'Yohanny' },
-    { time: '10:40 am – 12:00 pm', course: 'Español Avanzado', teacher: 'Lilliana' },
-    { time: '2:00 pm – 3:20 pm', course: 'Advanced English', teacher: 'Jessenia' },
-    { time: '3:35 pm – 5:00 pm', course: 'Física', teacher: 'Nicole' },
-  ],
-}
-
-const CYCLES = [CYCLE_1, CYCLE_2]
+const CYCLE_2_TIMES = CYCLE_1_TIMES
+const CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
+const CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
 
 function toDateKey(date) {
   const y = date.getFullYear()
@@ -35,8 +27,8 @@ function toDateKey(date) {
   return `${y}-${m}-${d}`
 }
 
-function formatDateKey(key) {
-  return new Date(`${key}T00:00:00`).toLocaleDateString(undefined, {
+function formatDateKey(key, locale) {
+  return new Date(`${key}T00:00:00`).toLocaleDateString(locale, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -49,7 +41,6 @@ function getUpcomingFridays(count) {
   const fridays = []
   const cursor = new Date()
   cursor.setHours(0, 0, 0, 0)
-  // Advance to the next Friday (or stay put if today already is one).
   const offset = (5 - cursor.getDay() + 7) % 7
   cursor.setDate(cursor.getDate() + offset)
 
@@ -62,7 +53,9 @@ function getUpcomingFridays(count) {
 
 export default function Cycles() {
   const { isAdmin } = useAdmin()
-  const [fridayCycles, setFridayCycles] = useState({}) // { '2026-03-06': 1, ... }
+  const { t, lang } = useLanguage()
+  const locale = getLocale(lang)
+  const [fridayCycles, setFridayCycles] = useState({})
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState(null)
 
@@ -82,7 +75,7 @@ export default function Cycles() {
 
   const today = useMemo(() => new Date(), [])
   const todayKey = toDateKey(today)
-  const todayWeekday = today.getDay() // 0 Sun ... 6 Sat
+  const todayWeekday = today.getDay()
 
   const todayStatus = useMemo(() => {
     if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 1, isFriday: false }
@@ -95,6 +88,32 @@ export default function Cycles() {
   }, [todayWeekday, todayKey, fridayCycles])
 
   const upcomingFridays = useMemo(() => getUpcomingFridays(10), [])
+
+  const cycles = useMemo(
+    () => [
+      {
+        key: 'cycle1',
+        label: t('cycles.cycle1Label'),
+        days: t('cycles.cycle1Days'),
+        periods: CYCLE_1_COURSE_KEYS.map((courseKey, i) => ({
+          time: CYCLE_1_TIMES[i],
+          course: t(`cycles.courses.${courseKey}`),
+          teacher: CYCLE_1_TEACHERS[i],
+        })),
+      },
+      {
+        key: 'cycle2',
+        label: t('cycles.cycle2Label'),
+        days: t('cycles.cycle2Days'),
+        periods: CYCLE_2_COURSE_KEYS.map((courseKey, i) => ({
+          time: CYCLE_2_TIMES[i],
+          course: t(`cycles.courses.${courseKey}`),
+          teacher: CYCLE_2_TEACHERS[i],
+        })),
+      },
+    ],
+    [t],
+  )
 
   async function setFridayCycle(dateKey, cycle) {
     setSavingKey(dateKey)
@@ -113,35 +132,34 @@ export default function Cycles() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Daily Class Cycle</h2>
-        <p className="mt-1 text-slate-600">
-          Mondays and Wednesdays always run Cycle 1. Tuesdays and Thursdays always run
-          Cycle 2. Fridays alternate — check the tag below or the schedule further down.
-        </p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t('cycles.heading')}</h2>
+        <p className="mt-1 text-slate-600">{t('cycles.subheading')}</p>
       </div>
 
       <section className="rounded-2xl border border-coral-200 bg-coral-50 p-5 shadow-sm">
-        <p className="text-sm font-medium text-coral-700">{formatDateKey(todayKey)}</p>
+        <p className="text-sm font-medium text-coral-700">{formatDateKey(todayKey, locale)}</p>
         <div className="mt-2 flex items-center gap-2">
           {todayStatus.isWeekend ? (
             <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-600">
-              No classes today
+              {t('cycles.noClasses')}
             </span>
           ) : todayStatus.isFriday && !todayStatus.cycle ? (
             <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">
-              Friday Cycle not set yet
+              {t('cycles.fridayNotSet')}
             </span>
           ) : (
             <span className="rounded-full bg-gold-400 px-3 py-1 text-sm font-semibold text-white">
-              {todayStatus.isFriday ? `Friday Cycle ${todayStatus.cycle}` : `Cycle ${todayStatus.cycle}`}
+              {todayStatus.isFriday
+                ? `${t('cycles.fridayCycle')} ${todayStatus.cycle}`
+                : `${t('cycles.cycle')} ${todayStatus.cycle}`}
             </span>
           )}
         </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {CYCLES.map(({ label, days, periods }) => (
-          <div key={label} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {cycles.map(({ key, label, days, periods }) => (
+          <div key={key} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
               <h3 className="font-semibold text-slate-900">{label}</h3>
               <p className="text-xs text-slate-500">{days}</p>
@@ -150,9 +168,9 @@ export default function Cycles() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-slate-500">
-                    <th className="px-4 py-2 font-medium">Time</th>
-                    <th className="px-4 py-2 font-medium">Class</th>
-                    <th className="px-4 py-2 font-medium">Teacher</th>
+                    <th className="px-4 py-2 font-medium">{t('cycles.time')}</th>
+                    <th className="px-4 py-2 font-medium">{t('cycles.classCol')}</th>
+                    <th className="px-4 py-2 font-medium">{t('cycles.teacher')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -172,13 +190,11 @@ export default function Cycles() {
 
       {isAdmin && (
         <section className="rounded-xl border border-coral-200 bg-coral-50/50 p-5 shadow-sm">
-          <h3 className="font-semibold text-coral-900">Manage Friday Cycles</h3>
-          <p className="mt-1 text-sm text-coral-700/80">
-            Set which cycle each upcoming Friday follows. Changes save immediately.
-          </p>
+          <h3 className="font-semibold text-coral-900">{t('cycles.manageHeading')}</h3>
+          <p className="mt-1 text-sm text-coral-700/80">{t('cycles.manageSubheading')}</p>
 
           {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading...</p>
+            <p className="mt-4 text-sm text-slate-500">{t('common.loading')}</p>
           ) : (
             <ul className="mt-4 space-y-2">
               {upcomingFridays.map((date) => {
@@ -190,7 +206,7 @@ export default function Cycles() {
                     className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5"
                   >
                     <span className="text-sm font-medium text-slate-800">
-                      {date.toLocaleDateString(undefined, {
+                      {date.toLocaleDateString(locale, {
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
@@ -204,10 +220,10 @@ export default function Cycles() {
                       className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm disabled:opacity-50"
                     >
                       <option value="" disabled>
-                        Not set
+                        {t('common.notSet')}
                       </option>
-                      <option value={1}>Cycle 1</option>
-                      <option value={2}>Cycle 2</option>
+                      <option value={1}>{t('cycles.cycle1Label')}</option>
+                      <option value={2}>{t('cycles.cycle2Label')}</option>
                     </select>
                   </li>
                 )

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
+import { useLanguage } from '../context/LanguageContext'
+import { getLocale } from '../lib/translations'
 
 const GRADUATION_DATE = new Date('2026-06-12T00:00:00')
 
@@ -15,8 +17,8 @@ function getCountdown() {
   return { days, hours, minutes }
 }
 
-function formatDate(dateStr) {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+function formatDate(dateStr, locale) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(locale, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -28,6 +30,8 @@ const emptyReminder = { message: '', is_urgent: false }
 
 export default function Dashboard() {
   const { isAdmin } = useAdmin()
+  const { t, lang } = useLanguage()
+  const locale = getLocale(lang)
   const [countdown, setCountdown] = useState(getCountdown)
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -118,7 +122,7 @@ export default function Dashboard() {
   }
 
   async function handleDeleteReminder(reminder) {
-    if (!confirm('Delete this reminder?')) return
+    if (!confirm(t('dashboard.deleteReminderConfirm'))) return
 
     const { error } = await supabase.from('reminders').delete().eq('id', reminder.id)
     if (error) {
@@ -167,16 +171,19 @@ export default function Dashboard() {
     <div className="space-y-8">
       <section className="rounded-2xl bg-gradient-to-br from-coral-500 to-gold-500 p-8 text-white shadow-lg">
         <p className="text-sm font-medium uppercase tracking-wide text-coral-50">
-          Graduation Countdown
+          {t('dashboard.countdownLabel')}
         </p>
-        <p className="mt-2 text-4xl font-bold">{countdown.days} days</p>
+        <p className="mt-2 text-4xl font-bold">
+          {countdown.days} {t('dashboard.days')}
+        </p>
         <p className="mt-1 text-coral-100">
-          {countdown.hours} hours · {countdown.minutes} minutes until June 12, 2026
+          {countdown.hours} {t('dashboard.hours')} · {countdown.minutes} {t('dashboard.minutes')}{' '}
+          {t('dashboard.until')}
         </p>
       </section>
 
       <section>
-        <h2 className="text-xl font-semibold text-slate-900">Important Reminders</h2>
+        <h2 className="text-xl font-semibold text-slate-900">{t('dashboard.remindersHeading')}</h2>
 
         {isAdmin && (
           <form
@@ -187,7 +194,7 @@ export default function Dashboard() {
               required
               value={newReminder.message}
               onChange={(e) => setNewReminder({ ...newReminder, message: e.target.value })}
-              placeholder="What does the class need to know?"
+              placeholder={t('dashboard.remindersPlaceholder')}
               rows={2}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
@@ -200,14 +207,14 @@ export default function Dashboard() {
                     setNewReminder({ ...newReminder, is_urgent: e.target.checked })
                   }
                 />
-                Mark as urgent
+                {t('dashboard.markUrgent')}
               </label>
               <button
                 type="submit"
                 disabled={postingReminder}
                 className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
               >
-                {postingReminder ? 'Posting...' : 'Post Reminder'}
+                {postingReminder ? t('dashboard.posting') : t('dashboard.postReminder')}
               </button>
             </div>
           </form>
@@ -215,10 +222,10 @@ export default function Dashboard() {
 
         <div className="mt-4">
           {remindersLoading ? (
-            <p className="text-slate-500">Loading reminders...</p>
+            <p className="text-slate-500">{t('dashboard.loadingReminders')}</p>
           ) : reminders.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
-              No reminders right now.
+              {t('dashboard.noReminders')}
             </div>
           ) : (
             <ul className="space-y-2">
@@ -250,7 +257,7 @@ export default function Dashboard() {
                             setEditReminder({ ...editReminder, is_urgent: e.target.checked })
                           }
                         />
-                        Mark as urgent
+                        {t('dashboard.markUrgent')}
                       </label>
                       <div className="flex gap-2">
                         <button
@@ -258,14 +265,14 @@ export default function Dashboard() {
                           onClick={() => setEditingReminderId(null)}
                           className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                         <button
                           type="submit"
                           disabled={savingReminderEdit}
                           className="flex-1 rounded-lg bg-coral-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
                         >
-                          {savingReminderEdit ? 'Saving...' : 'Save'}
+                          {savingReminderEdit ? t('common.saving') : t('common.save')}
                         </button>
                       </div>
                     </form>
@@ -279,7 +286,7 @@ export default function Dashboard() {
                               : 'bg-gold-400 text-white'
                           }`}
                         >
-                          {reminder.is_urgent ? 'Urgent' : 'Reminder'}
+                          {reminder.is_urgent ? t('dashboard.urgentTag') : t('dashboard.reminderTag')}
                         </span>
                         <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
                           {reminder.message}
@@ -292,14 +299,14 @@ export default function Dashboard() {
                             onClick={() => startEditReminder(reminder)}
                             className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-white"
                           >
-                            Edit
+                            {t('common.edit')}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteReminder(reminder)}
                             className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
                           >
-                            Delete
+                            {t('common.delete')}
                           </button>
                         </div>
                       )}
@@ -314,17 +321,17 @@ export default function Dashboard() {
 
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-900">Pending Calendar Requests</h2>
+          <h2 className="text-xl font-semibold text-slate-900">{t('dashboard.pendingHeading')}</h2>
           {!isAdmin && (
-            <span className="text-xs text-slate-500">View only — VP approval required</span>
+            <span className="text-xs text-slate-500">{t('dashboard.viewOnlyNote')}</span>
           )}
         </div>
 
         {loading ? (
-          <p className="text-slate-500">Loading requests...</p>
+          <p className="text-slate-500">{t('dashboard.loadingRequests')}</p>
         ) : requests.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-            No pending requests. Submit one from the Calendar page.
+            {t('dashboard.noRequests')}
           </div>
         ) : (
           <ul className="space-y-3">
@@ -337,7 +344,8 @@ export default function Dashboard() {
                   <div>
                     <p className="font-semibold text-slate-900">{req.proposed_title}</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      {formatDate(req.proposed_date)} · Requested by {req.requester_name}
+                      {formatDate(req.proposed_date, locale)} · {t('dashboard.requestedBy')}{' '}
+                      {req.requester_name}
                     </p>
                     {req.proposed_description && (
                       <p className="mt-2 text-sm text-slate-700">{req.proposed_description}</p>
@@ -352,7 +360,7 @@ export default function Dashboard() {
                         onClick={() => handleApprove(req)}
                         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                       >
-                        ✅ Approve
+                        ✅ {t('dashboard.approve')}
                       </button>
                       <button
                         type="button"
@@ -360,7 +368,7 @@ export default function Dashboard() {
                         onClick={() => handleReject(req.id)}
                         className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                       >
-                        ❌ Reject
+                        ❌ {t('dashboard.reject')}
                       </button>
                     </div>
                   )}

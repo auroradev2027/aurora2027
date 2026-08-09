@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
+import { useLanguage } from '../context/LanguageContext'
 
-const CATEGORIES = ['Study Guides', 'Test Summaries', 'College Apps']
+const CATEGORY_KEYS = ['Study Guides', 'Test Summaries', 'College Apps']
 
 const emptyForm = {
   title: '',
@@ -12,13 +13,13 @@ const emptyForm = {
 
 export default function Resources() {
   const { isAdmin } = useAdmin()
+  const { t } = useLanguage()
   const [resources, setResources] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(emptyForm)
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
 
-  // Inline "edit title" state
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
@@ -38,7 +39,7 @@ export default function Resources() {
   }, [loadResources])
 
   const grouped = useMemo(() => {
-    return CATEGORIES.reduce((acc, category) => {
+    return CATEGORY_KEYS.reduce((acc, category) => {
       acc[category] = resources.filter((r) => r.category === category)
       return acc
     }, {})
@@ -118,7 +119,7 @@ export default function Resources() {
   }
 
   async function handleDelete(item) {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return
+    if (!confirm(t('resources.deleteConfirm', { name: item.title }))) return
 
     const { error } = await supabase.from('resources').delete().eq('id', item.id)
     if (error) {
@@ -131,22 +132,20 @@ export default function Resources() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Resource Hub</h2>
-        <p className="mt-1 text-slate-600">
-          Upload study guides, test summaries, and college app materials for the class.
-        </p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t('resources.heading')}</h2>
+        <p className="mt-1 text-slate-600">{t('resources.subheading')}</p>
       </div>
 
       <form
         onSubmit={handleUpload}
         className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
       >
-        <h3 className="font-semibold text-slate-900">Upload a Resource</h3>
+        <h3 className="font-semibold text-slate-900">{t('resources.uploadHeading')}</h3>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <input
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder="Title (optional — uses filename)"
+            placeholder={t('resources.titleOptionalPlaceholder')}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-1"
           />
           <select
@@ -154,9 +153,9 @@ export default function Resources() {
             onChange={(e) => setForm({ ...form, category: e.target.value })}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            {CATEGORIES.map((cat) => (
+            {CATEGORY_KEYS.map((cat) => (
               <option key={cat} value={cat}>
-                {cat}
+                {t(`resources.categories.${cat}`)}
               </option>
             ))}
           </select>
@@ -165,12 +164,12 @@ export default function Resources() {
             accept=".pdf,image/*"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             required
-            className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700"
+            className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-coral-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-coral-700"
           />
           <textarea
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Description (optional)"
+            placeholder={t('resources.descriptionOptionalPlaceholder')}
             rows={2}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-3"
           />
@@ -178,21 +177,23 @@ export default function Resources() {
         <button
           type="submit"
           disabled={uploading}
-          className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="mt-4 rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
         >
-          {uploading ? 'Uploading...' : 'Upload'}
+          {uploading ? t('resources.uploading') : t('resources.upload')}
         </button>
       </form>
 
       {loading ? (
-        <p className="text-slate-500">Loading resources...</p>
+        <p className="text-slate-500">{t('resources.loading')}</p>
       ) : (
         <div className="space-y-8">
-          {CATEGORIES.map((category) => (
+          {CATEGORY_KEYS.map((category) => (
             <section key={category}>
-              <h3 className="mb-3 text-lg font-semibold text-slate-900">{category}</h3>
+              <h3 className="mb-3 text-lg font-semibold text-slate-900">
+                {t(`resources.categories.${category}`)}
+              </h3>
               {grouped[category].length === 0 ? (
-                <p className="text-sm text-slate-500">No files yet.</p>
+                <p className="text-sm text-slate-500">{t('resources.noFiles')}</p>
               ) : (
                 <ul className="space-y-2">
                   {grouped[category].map((item) => (
@@ -213,16 +214,16 @@ export default function Resources() {
                               type="button"
                               disabled={savingEdit}
                               onClick={() => saveEditTitle(item.id)}
-                              className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                              className="rounded-lg bg-coral-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
                             >
-                              {savingEdit ? 'Saving...' : 'Save'}
+                              {savingEdit ? t('common.saving') : t('common.save')}
                             </button>
                             <button
                               type="button"
                               onClick={cancelEditTitle}
                               className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                           </div>
                         ) : (
@@ -240,9 +241,9 @@ export default function Resources() {
                           href={item.file_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-slate-200"
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-coral-700 hover:bg-slate-200"
                         >
-                          Open
+                          {t('resources.open')}
                         </a>
                         {isAdmin && editingId !== item.id && (
                           <>
@@ -251,14 +252,14 @@ export default function Resources() {
                               onClick={() => startEditTitle(item)}
                               className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                             >
-                              Edit Title
+                              {t('resources.editTitle')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(item)}
                               className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </>
                         )}

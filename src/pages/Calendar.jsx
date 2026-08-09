@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+import { useLanguage } from '../context/LanguageContext'
+import { getLocale } from '../lib/translations'
 
 const emptyRequest = {
   proposed_title: '',
@@ -28,8 +28,8 @@ function toDateKey(date) {
   return `${y}-${m}-${d}`
 }
 
-function formatDateKey(key) {
-  return new Date(`${key}T00:00:00`).toLocaleDateString(undefined, {
+function formatDateKey(key, locale) {
+  return new Date(`${key}T00:00:00`).toLocaleDateString(locale, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -39,6 +39,9 @@ function formatDateKey(key) {
 
 export default function Calendar() {
   const { isAdmin } = useAdmin()
+  const { t, lang } = useLanguage()
+  const locale = getLocale(lang)
+  const weekdays = t('calendar.weekdays')
   const [viewDate, setViewDate] = useState(() => new Date())
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -46,7 +49,6 @@ export default function Calendar() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState('')
 
-  // Day modal state
   const [selectedDateKey, setSelectedDateKey] = useState(null)
   const [addingEvent, setAddingEvent] = useState(false)
   const [newEvent, setNewEvent] = useState(emptyNewEvent)
@@ -128,7 +130,7 @@ export default function Calendar() {
     }
 
     setForm(emptyRequest)
-    setMessage('Request submitted! It will appear on the Dashboard for VP approval.')
+    setMessage(t('calendar.submitSuccess'))
   }
 
   function openDayModal(dateKey) {
@@ -163,8 +165,6 @@ export default function Calendar() {
     }
 
     setNewEvent(emptyNewEvent)
-    // Keep the "add event" form open so admins can add several events to the
-    // same day back-to-back without the day modal closing or re-clicking "+ Add Event".
     loadEvents()
   }
 
@@ -196,7 +196,7 @@ export default function Calendar() {
   }
 
   async function handleDeleteEvent(event) {
-    if (!confirm(`Delete "${event.title}"? This cannot be undone.`)) return
+    if (!confirm(t('calendar.deleteEventConfirm', { name: event.title }))) return
 
     const { error } = await supabase.from('calendar_events').delete().eq('id', event.id)
     if (error) {
@@ -206,16 +206,13 @@ export default function Calendar() {
     loadEvents()
   }
 
-  const monthLabel = viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const monthLabel = viewDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Calendar & Requests</h2>
-        <p className="mt-1 text-slate-600">
-          Click any day to see full event details. Anyone can view; admins can add, edit, or
-          remove events directly from that day.
-        </p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t('calendar.heading')}</h2>
+        <p className="mt-1 text-slate-600">{t('calendar.subheading')}</p>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -225,24 +222,24 @@ export default function Calendar() {
             onClick={prevMonth}
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
           >
-            ← Prev
+            {t('calendar.prevMonth')}
           </button>
-          <h3 className="text-lg font-semibold text-slate-900">{monthLabel}</h3>
+          <h3 className="text-lg font-semibold capitalize text-slate-900">{monthLabel}</h3>
           <button
             type="button"
             onClick={nextMonth}
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
           >
-            Next →
+            {t('calendar.nextMonth')}
           </button>
         </div>
 
         {loading ? (
-          <p className="text-slate-500">Loading calendar...</p>
+          <p className="text-slate-500">{t('calendar.loading')}</p>
         ) : (
           <>
             <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500">
-              {WEEKDAYS.map((day) => (
+              {weekdays.map((day) => (
                 <div key={day} className="py-2">
                   {day}
                 </div>
@@ -263,13 +260,13 @@ export default function Calendar() {
                     type="button"
                     key={key}
                     onClick={() => openDayModal(key)}
-                    className={`min-h-20 rounded-lg border p-1.5 text-left transition hover:border-indigo-300 hover:shadow-sm ${
-                      isToday ? 'border-indigo-400 bg-indigo-50' : 'border-slate-100 bg-white'
+                    className={`min-h-20 rounded-lg border p-1.5 text-left transition hover:border-coral-300 hover:shadow-sm ${
+                      isToday ? 'border-coral-400 bg-coral-50' : 'border-slate-100 bg-white'
                     }`}
                   >
                     <span
                       className={`text-xs font-semibold ${
-                        isToday ? 'text-indigo-700' : 'text-slate-700'
+                        isToday ? 'text-coral-700' : 'text-slate-700'
                       }`}
                     >
                       {date.getDate()}
@@ -279,7 +276,7 @@ export default function Calendar() {
                         <li
                           key={event.id}
                           title={event.description ?? ''}
-                          className="truncate rounded bg-indigo-100 px-1 py-0.5 text-[10px] font-medium text-indigo-800"
+                          className="truncate rounded bg-coral-100 px-1 py-0.5 text-[10px] font-medium text-coral-800"
                         >
                           {event.title}
                         </li>
@@ -294,17 +291,15 @@ export default function Calendar() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="font-semibold text-slate-900">Request a Calendar Edit</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Anyone can submit a request. Approved events appear on the calendar above.
-        </p>
+        <h3 className="font-semibold text-slate-900">{t('calendar.requestHeading')}</h3>
+        <p className="mt-1 text-sm text-slate-600">{t('calendar.requestSubheading')}</p>
 
         <form onSubmit={handleSubmit} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input
             required
             value={form.proposed_title}
             onChange={(e) => setForm({ ...form, proposed_title: e.target.value })}
-            placeholder="Event title"
+            placeholder={t('calendar.eventTitlePlaceholder')}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <input
@@ -318,13 +313,13 @@ export default function Calendar() {
             required
             value={form.requester_name}
             onChange={(e) => setForm({ ...form, requester_name: e.target.value })}
-            placeholder="Your name"
+            placeholder={t('calendar.yourNamePlaceholder')}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <textarea
             value={form.proposed_description}
             onChange={(e) => setForm({ ...form, proposed_description: e.target.value })}
-            placeholder="Description (optional)"
+            placeholder={t('calendar.descriptionOptionalPlaceholder')}
             rows={2}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
           />
@@ -332,9 +327,9 @@ export default function Calendar() {
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
             >
-              {submitting ? 'Submitting...' : 'Submit Request'}
+              {submitting ? t('calendar.submitting') : t('calendar.submit')}
             </button>
             {message && <p className="mt-2 text-sm text-emerald-700">{message}</p>}
           </div>
@@ -351,14 +346,14 @@ export default function Calendar() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {formatDateKey(selectedDateKey)}
+              <h2 className="text-lg font-semibold capitalize text-slate-900">
+                {formatDateKey(selectedDateKey, locale)}
               </h2>
               <button
                 type="button"
                 onClick={closeDayModal}
                 className="text-slate-400 hover:text-slate-600"
-                aria-label="Close"
+                aria-label={t('common.close')}
               >
                 ✕
               </button>
@@ -366,7 +361,7 @@ export default function Calendar() {
 
             <div className="mt-4 space-y-3">
               {selectedDayEvents.length === 0 ? (
-                <p className="text-sm text-slate-500">No events on this day yet.</p>
+                <p className="text-sm text-slate-500">{t('calendar.noEventsDay')}</p>
               ) : (
                 selectedDayEvents.map((event) => (
                   <div
@@ -381,7 +376,7 @@ export default function Calendar() {
                           onChange={(e) =>
                             setEditEvent({ ...editEvent, title: e.target.value })
                           }
-                          placeholder="Event title"
+                          placeholder={t('calendar.eventTitlePlaceholder')}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         />
                         <textarea
@@ -389,7 +384,7 @@ export default function Calendar() {
                           onChange={(e) =>
                             setEditEvent({ ...editEvent, description: e.target.value })
                           }
-                          placeholder="Description"
+                          placeholder={t('calendar.descriptionOptionalPlaceholder')}
                           rows={2}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         />
@@ -399,14 +394,14 @@ export default function Calendar() {
                             onClick={() => setEditingEventId(null)}
                             className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                           <button
                             type="submit"
                             disabled={savingEditEvent}
-                            className="flex-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                            className="flex-1 rounded-lg bg-coral-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
                           >
-                            {savingEditEvent ? 'Saving...' : 'Save'}
+                            {savingEditEvent ? t('common.saving') : t('common.save')}
                           </button>
                         </div>
                       </form>
@@ -417,7 +412,7 @@ export default function Calendar() {
                         </div>
                         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
                           {event.description ? event.description : (
-                            <span className="text-slate-400">No description added.</span>
+                            <span className="text-slate-400">{t('calendar.noDescription')}</span>
                           )}
                         </p>
                         {isAdmin && (
@@ -427,14 +422,14 @@ export default function Calendar() {
                               onClick={() => startEditEvent(event)}
                               className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-white"
                             >
-                              Edit
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteEvent(event)}
                               className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </div>
                         )}
@@ -451,19 +446,19 @@ export default function Calendar() {
                   <button
                     type="button"
                     onClick={() => setAddingEvent(true)}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700"
                   >
-                    + Add Event
+                    {t('calendar.addEvent')}
                   </button>
                 ) : (
                   <form onSubmit={handleAddEvent} className="space-y-2">
-                    <p className="text-xs font-medium text-slate-500">New event</p>
+                    <p className="text-xs font-medium text-slate-500">{t('calendar.newEvent')}</p>
                     <input
                       required
                       autoFocus
                       value={newEvent.title}
                       onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                      placeholder="Event title"
+                      placeholder={t('calendar.eventTitlePlaceholder')}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                     <textarea
@@ -471,7 +466,7 @@ export default function Calendar() {
                       onChange={(e) =>
                         setNewEvent({ ...newEvent, description: e.target.value })
                       }
-                      placeholder="Description (optional)"
+                      placeholder={t('calendar.descriptionOptionalPlaceholder')}
                       rows={2}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
@@ -484,14 +479,14 @@ export default function Calendar() {
                         }}
                         className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                       <button
                         type="submit"
                         disabled={savingNewEvent}
-                        className="flex-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        className="flex-1 rounded-lg bg-coral-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
                       >
-                        {savingNewEvent ? 'Adding...' : 'Add Event'}
+                        {savingNewEvent ? t('calendar.adding') : t('calendar.addEvent').replace('+ ', '')}
                       </button>
                     </div>
                   </form>

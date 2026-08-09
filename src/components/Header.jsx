@@ -1,16 +1,18 @@
 import { NavLink } from 'react-router-dom'
 import { useAdmin } from '../context/AdminContext'
-
-const navLinks = [
-  { to: '/', label: 'Dashboard' },
-  { to: '/cycles', label: 'Cycles' },
-  { to: '/assignments', label: 'Assignments' },
-  { to: '/resources', label: 'Resources' },
-  { to: '/calendar', label: 'Calendar' },
-]
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Header() {
   const { isAdmin, toggleLock } = useAdmin()
+  const { lang, toggleLang, t } = useLanguage()
+
+  const navLinks = [
+    { to: '/', label: t('header.dashboard') },
+    { to: '/cycles', label: t('header.cycles') },
+    { to: '/assignments', label: t('header.assignments') },
+    { to: '/resources', label: t('header.resources') },
+    { to: '/calendar', label: t('header.calendar') },
+  ]
 
   return (
     <header className="border-b-2 border-gold-400 bg-white shadow-sm">
@@ -26,9 +28,9 @@ export default function Header() {
           />
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-coral-600">
-              Class of 2026
+              {t('header.classOf')}
             </p>
-            <h1 className="text-xl font-bold text-slate-900">Senior Portal</h1>
+            <h1 className="text-xl font-bold text-slate-900">{t('header.portalName')}</h1>
           </div>
         </div>
 
@@ -52,16 +54,27 @@ export default function Header() {
 
           <button
             type="button"
+            onClick={toggleLang}
+            title={lang === 'en' ? 'Switch to Spanish' : 'Cambiar a inglés'}
+            className="ml-1 flex items-center gap-1 rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-sm font-semibold text-gold-800 hover:bg-gold-100"
+          >
+            <span className={lang === 'en' ? 'text-gold-900' : 'text-gold-500'}>EN</span>
+            <span aria-hidden="true">/</span>
+            <span className={lang === 'es' ? 'text-gold-900' : 'text-gold-500'}>ES</span>
+          </button>
+
+          <button
+            type="button"
             onClick={toggleLock}
-            title={isAdmin ? 'Lock admin mode' : 'Unlock admin mode'}
-            className={`ml-2 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            title={isAdmin ? t('header.lockTitle') : t('header.unlockTitle')}
+            className={`ml-1 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
               isAdmin
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                 : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             <span aria-hidden="true">{isAdmin ? '🔓' : '🔒'}</span>
-            {isAdmin ? 'Admin' : 'Lock'}
+            {isAdmin ? t('header.admin') : t('header.lock')}
           </button>
         </nav>
       </div>

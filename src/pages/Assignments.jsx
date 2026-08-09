@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
+import { useLanguage } from '../context/LanguageContext'
+import { getLocale } from '../lib/translations'
 
 const emptyForm = {
   class_name: '',
@@ -16,8 +18,8 @@ const emptyEditForm = {
   description: '',
 }
 
-function formatDate(dateStr) {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+function formatDate(dateStr, locale) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -43,7 +45,6 @@ function getFileName(url) {
   if (!url) return ''
   try {
     const decoded = decodeURIComponent(url.split('/').pop() ?? '')
-    // strip the "<timestamp>-<random>." prefix we add on upload
     return decoded.replace(/^\d+-[a-z0-9]+\./, '')
   } catch {
     return 'attached file'
@@ -52,13 +53,14 @@ function getFileName(url) {
 
 export default function Assignments() {
   const { isAdmin } = useAdmin()
+  const { t, lang } = useLanguage()
+  const locale = getLocale(lang)
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
 
-  // Detail modal state
-  const [selected, setSelected] = useState(null) // the assignment currently open in the modal
+  const [selected, setSelected] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState(emptyEditForm)
   const [editFile, setEditFile] = useState(null)
@@ -78,7 +80,6 @@ export default function Assignments() {
     loadAssignments()
   }, [loadAssignments])
 
-  // Keep the modal's data in sync if the underlying list refreshes (e.g. after a save).
   useEffect(() => {
     if (!selected) return
     const fresh = assignments.find((a) => a.id === selected.id)
@@ -128,7 +129,7 @@ export default function Assignments() {
   }
 
   async function handleDelete(item) {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return
+    if (!confirm(t('assignments.deleteConfirm', { name: item.title }))) return
 
     const { error } = await supabase.from('assignments').delete().eq('id', item.id)
     if (error) {
@@ -197,29 +198,29 @@ export default function Assignments() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Assignments</h2>
-        <p className="mt-1 text-slate-600">All class assignments, grouped by course.</p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t('assignments.heading')}</h2>
+        <p className="mt-1 text-slate-600">{t('assignments.subheading')}</p>
       </div>
 
       {isAdmin && (
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm"
+          className="rounded-xl border border-coral-200 bg-coral-50/50 p-5 shadow-sm"
         >
-          <h3 className="font-semibold text-indigo-900">Add Assignment</h3>
+          <h3 className="font-semibold text-coral-900">{t('assignments.addHeading')}</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input
               required
               value={form.class_name}
               onChange={(e) => setForm({ ...form, class_name: e.target.value })}
-              placeholder="Class name (e.g. AP Calculus)"
+              placeholder={t('assignments.classNamePlaceholder')}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <input
               required
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Assignment title"
+              placeholder={t('assignments.titlePlaceholder')}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <input
@@ -235,28 +236,26 @@ export default function Assignments() {
                 checked={form.is_completed}
                 onChange={(e) => setForm({ ...form, is_completed: e.target.checked })}
               />
-              Mark as completed
+              {t('assignments.markCompleted')}
             </label>
           </div>
           <button
             type="submit"
             disabled={submitting}
-            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="mt-4 rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
           >
-            {submitting ? 'Adding...' : 'Add Assignment'}
+            {submitting ? t('assignments.adding') : t('assignments.add')}
           </button>
-          <p className="mt-2 text-xs text-indigo-700/70">
-            Add a description or attach a file afterward by clicking into the assignment.
-          </p>
+          <p className="mt-2 text-xs text-coral-700/70">{t('assignments.addNote')}</p>
         </form>
       )}
 
       {loading ? (
-        <p className="text-slate-500">Loading assignments...</p>
+        <p className="text-slate-500">{t('assignments.loading')}</p>
       ) : assignments.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-          No assignments yet.
-          {isAdmin ? ' Use the form above to add one.' : ''}
+          {t('assignments.none')}
+          {isAdmin ? t('assignments.useFormAbove') : ''}
         </div>
       ) : (
         <div className="space-y-6">
@@ -268,7 +267,7 @@ export default function Assignments() {
                   <li
                     key={item.id}
                     onClick={() => openModal(item)}
-                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-indigo-300 hover:shadow-md"
+                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-coral-300 hover:shadow-md"
                   >
                     <div>
                       <p
@@ -278,7 +277,9 @@ export default function Assignments() {
                       >
                         {item.title}
                       </p>
-                      <p className="text-sm text-slate-500">Due {formatDate(item.due_date)}</p>
+                      <p className="text-sm text-slate-500">
+                        {t('assignments.due')} {formatDate(item.due_date, locale)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span
@@ -288,7 +289,7 @@ export default function Assignments() {
                             : 'bg-amber-100 text-amber-700'
                         }`}
                       >
-                        {item.is_completed ? 'Done' : 'Pending'}
+                        {item.is_completed ? t('assignments.done') : t('assignments.pending')}
                       </span>
                       {isAdmin && (
                         <>
@@ -298,9 +299,9 @@ export default function Assignments() {
                               e.stopPropagation()
                               toggleComplete(item.id, item.is_completed)
                             }}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                            className="text-xs font-medium text-coral-600 hover:text-coral-800"
                           >
-                            Toggle status
+                            {t('assignments.toggleStatus')}
                           </button>
                           <button
                             type="button"
@@ -311,7 +312,7 @@ export default function Assignments() {
                             }}
                             className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           >
-                            Edit
+                            {t('common.edit')}
                           </button>
                           <button
                             type="button"
@@ -321,7 +322,7 @@ export default function Assignments() {
                             }}
                             className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
                           >
-                            Delete
+                            {t('common.delete')}
                           </button>
                         </>
                       )}
@@ -351,7 +352,7 @@ export default function Assignments() {
                     type="button"
                     onClick={closeModal}
                     className="text-slate-400 hover:text-slate-600"
-                    aria-label="Close"
+                    aria-label={t('common.close')}
                   >
                     ✕
                   </button>
@@ -359,45 +360,45 @@ export default function Assignments() {
 
                 <dl className="mt-4 space-y-3 text-sm">
                   <div>
-                    <dt className="font-medium text-slate-500">Class</dt>
+                    <dt className="font-medium text-slate-500">{t('assignments.class')}</dt>
                     <dd className="text-slate-900">{selected.class_name}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-slate-500">Due Date</dt>
-                    <dd className="text-slate-900">{formatDate(selected.due_date)}</dd>
+                    <dt className="font-medium text-slate-500">{t('assignments.dueDate')}</dt>
+                    <dd className="text-slate-900">{formatDate(selected.due_date, locale)}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-slate-500">Status</dt>
+                    <dt className="font-medium text-slate-500">{t('assignments.status')}</dt>
                     <dd className="text-slate-900">
-                      {selected.is_completed ? 'Completed' : 'Pending'}
+                      {selected.is_completed ? t('assignments.completed') : t('assignments.pending')}
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-slate-500">Description</dt>
+                    <dt className="font-medium text-slate-500">{t('assignments.description')}</dt>
                     <dd className="whitespace-pre-wrap text-slate-900">
                       {selected.description ? selected.description : (
-                        <span className="text-slate-400">No description added.</span>
+                        <span className="text-slate-400">{t('assignments.noDescription')}</span>
                       )}
                     </dd>
                   </div>
                   {selected.file_url && (
                     <div>
-                      <dt className="font-medium text-slate-500">Attached File</dt>
+                      <dt className="font-medium text-slate-500">{t('assignments.attachedFile')}</dt>
                       <dd className="mt-1 flex flex-wrap gap-2">
                         <a
                           href={selected.file_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-slate-200"
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-coral-700 hover:bg-slate-200"
                         >
-                          Open {getFileName(selected.file_url)}
+                          {t('assignments.open')} {getFileName(selected.file_url)}
                         </a>
                         <a
                           href={selected.file_url}
                           download
-                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-slate-200"
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-coral-700 hover:bg-slate-200"
                         >
-                          Download
+                          {t('assignments.download')}
                         </a>
                       </dd>
                     </div>
@@ -409,16 +410,16 @@ export default function Assignments() {
                     <button
                       type="button"
                       onClick={() => startEditing(selected)}
-                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                      className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700"
                     >
-                      Edit
+                      {t('common.edit')}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(selected)}
                       className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </div>
                 )}
@@ -426,12 +427,12 @@ export default function Assignments() {
             ) : (
               <>
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-slate-900">Edit Assignment</h2>
+                  <h2 className="text-lg font-semibold text-slate-900">{t('assignments.editHeading')}</h2>
                   <button
                     type="button"
                     onClick={closeModal}
                     className="text-slate-400 hover:text-slate-600"
-                    aria-label="Close"
+                    aria-label={t('common.close')}
                   >
                     ✕
                   </button>
@@ -439,7 +440,7 @@ export default function Assignments() {
 
                 <form onSubmit={handleEditSave} className="mt-4 space-y-3">
                   <div>
-                    <label className="text-xs font-medium text-slate-500">Title</label>
+                    <label className="text-xs font-medium text-slate-500">{t('assignments.title')}</label>
                     <input
                       required
                       value={editForm.title}
@@ -448,7 +449,7 @@ export default function Assignments() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500">Class</label>
+                    <label className="text-xs font-medium text-slate-500">{t('assignments.class')}</label>
                     <input
                       required
                       value={editForm.class_name}
@@ -457,7 +458,7 @@ export default function Assignments() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500">Due Date</label>
+                    <label className="text-xs font-medium text-slate-500">{t('assignments.dueDate')}</label>
                     <input
                       required
                       type="date"
@@ -467,27 +468,27 @@ export default function Assignments() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500">Description</label>
+                    <label className="text-xs font-medium text-slate-500">{t('assignments.description')}</label>
                     <textarea
                       rows={4}
                       value={editForm.description}
                       onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                      placeholder="Details about the assignment..."
+                      placeholder={t('assignments.descriptionPlaceholder')}
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-slate-500">
-                      {selected.file_url ? 'Replace File' : 'Attach File'}
+                      {selected.file_url ? t('assignments.replaceFile') : t('assignments.attachFile')}
                     </label>
                     <input
                       type="file"
                       onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
-                      className="mt-1 w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700"
+                      className="mt-1 w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-coral-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-coral-700"
                     />
                     {selected.file_url && !editFile && (
                       <p className="mt-1 text-xs text-slate-500">
-                        Current file: {getFileName(selected.file_url)}
+                        {t('assignments.currentFile')} {getFileName(selected.file_url)}
                       </p>
                     )}
                   </div>
@@ -498,14 +499,14 @@ export default function Assignments() {
                       onClick={() => setIsEditing(false)}
                       className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="submit"
                       disabled={savingEdit}
-                      className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                      className="flex-1 rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
                     >
-                      {savingEdit ? 'Saving...' : 'Save Changes'}
+                      {savingEdit ? t('common.saving') : t('assignments.saveChanges')}
                     </button>
                   </div>
                 </form>
