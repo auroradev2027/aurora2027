@@ -122,6 +122,13 @@ export default function Resources() {
       alert(`Could not delete: ${error.message}`)
       return
     }
+
+    try {
+      await deleteGoogleDriveFile(item.file_url)
+    } catch {
+      // The database record is already gone; keep the Drive file if cleanup fails.
+    }
+
     loadResources()
   }
 
