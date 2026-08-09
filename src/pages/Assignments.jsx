@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getLocale } from '../lib/translations'
+import { deleteGoogleDriveFile, getGoogleDriveFileName, uploadFileToGoogleDrive } from '../lib/googleDrive'
 
 const NAME_STORAGE_KEY = 'aurora_student_name'
 
@@ -34,29 +35,14 @@ function formatDate(dateStr, locale) {
   })
 }
 
-// Uploads a file to the "assignments" storage bucket and returns its public URL.
+// Uploads assignment files to Google Drive and returns a public link.
 async function uploadAssignmentFile(file) {
-  const ext = file.name.split('.').pop()
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
-  const { error: uploadError } = await supabase.storage
-    .from('assignments')
-    .upload(path, file, { upsert: false })
-
-  if (uploadError) throw uploadError
-
-  const { data } = supabase.storage.from('assignments').getPublicUrl(path)
-  return data.publicUrl
+  const uploaded = await uploadFileToGoogleDrive(file)
+  return uploaded.url
 }
 
 function getFileName(url) {
-  if (!url) return ''
-  try {
-    const decoded = decodeURIComponent(url.split('/').pop() ?? '')
-    return decoded.replace(/^\d+-[a-z0-9]+\./, '')
-  } catch {
-    return 'attached file'
-  }
+  return getGoogleDriveFileName(url) || 'attached file'
 }
 
 function readStoredName() {
@@ -259,9 +245,16 @@ export default function Assignments() {
   async function handleDelete(item) {
     if (!confirm(t('assignments.deleteConfirm', { name: item.title }))) return
 
+    try {
+      await deleteGoogleDriveFile(item.file_url)
+    } catch (error) {
+      alert(`Could not delete the Google Drive file: ${error.message}`)
+      return
+    }
+
     const { error } = await supabase.from('assignments').delete().eq('id', item.id)
     if (error) {
-      alert(`Could not delete: ${error.message}`)
+      alert(`Drive file deleted, but the assignment record could not be deleted: ${error.message}`)
       return
     }
     if (selected?.id === item.id) closeModal()
@@ -296,7 +289,8 @@ export default function Assignments() {
     setSavingEdit(true)
 
     try {
-      let file_url = selected.file_url ?? null
+      const oldFileUrl = selected.file_url ?? null
+      let file_url = oldFileUrl
       if (editFile) {
         file_url = await uploadAssignmentFile(editFile)
       }
@@ -313,7 +307,16 @@ export default function Assignments() {
         })
         .eq('id', selected.id)
 
-      if (error) throw error
+      if (error) {
+        if (editFile && file_url !== oldFileUrl) {
+          try { await deleteGoogleDriveFile(file_url) } catch { /* keep the uploaded file if cleanup fails */ }
+        }
+        throw error
+      }
+
+      if (editFile && oldFileUrl && oldFileUrl !== file_url) {
+        try { await deleteGoogleDriveFile(oldFileUrl) } catch { /* old orphan can be removed manually */ }
+      }
 
       setIsEditing(false)
       setEditFile(null)
@@ -741,8 +744,9 @@ export default function Assignments() {
                           {t('assignments.open')} {getFileName(selected.file_url)}
                         </a>
                         <a
-                          href={selected.file_url}
-                          download
+                          href={`https://drive.google.com/uc?export=download&id=${encodeURIComponent(selected.file_url?.match(/\/file\/d\/([^/]+)/)?.[1] || '')}`}
+                          target="_blank"
+                          rel="noreferrer"
                           className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-coral-700 hover:bg-slate-200"
                         >
                           {t('assignments.download')}

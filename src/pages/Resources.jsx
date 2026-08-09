@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAdmin } from '../context/AdminContext'
 import { useLanguage } from '../context/LanguageContext'
+import { deleteGoogleDriveFile, uploadFileToGoogleDrive } from '../lib/googleDrive'
 
 const CATEGORY_KEYS = ['Study Guides', 'Test Summaries', 'College Apps']
 
@@ -53,30 +54,25 @@ export default function Resources() {
     }
 
     setUploading(true)
-    const ext = file.name.split('.').pop()
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('resources')
-      .upload(path, file, { upsert: false })
-
-    if (uploadError) {
+    let driveFile
+    try {
+      driveFile = await uploadFileToGoogleDrive(file)
+    } catch (error) {
       setUploading(false)
-      alert(`Upload failed: ${uploadError.message}`)
+      alert(`Upload failed: ${error.message}`)
       return
     }
-
-    const { data: urlData } = supabase.storage.from('resources').getPublicUrl(path)
 
     const { error: insertError } = await supabase.from('resources').insert({
       title: form.title.trim() || file.name,
       category: form.category,
       description: form.description.trim() || null,
-      file_url: urlData.publicUrl,
+      file_url: driveFile.url,
     })
 
     setUploading(false)
     if (insertError) {
+      try { await deleteGoogleDriveFile(driveFile.url) } catch { /* keep the file if cleanup fails */ }
       alert(`File uploaded but record failed: ${insertError.message}`)
       return
     }
@@ -161,7 +157,7 @@ export default function Resources() {
           </select>
           <input
             type="file"
-            accept=".pdf,image/*"
+            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,image/*"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             required
             className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-coral-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-coral-700"
