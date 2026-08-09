@@ -40,7 +40,7 @@ export default function AdminPinModal() {
             onChange={(e) => setPin(e.target.value)}
             placeholder="Passphrase"
             autoFocus
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-2 focus:ring-coral-200"
           />
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
@@ -53,7 +53,7 @@ export default function AdminPinModal() {
             </button>
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="flex-1 rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700"
             >
               Unlock
             </button>
