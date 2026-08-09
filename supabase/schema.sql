@@ -1,4 +1,10 @@
--- Class of 2026 Portal — run this entire file in Supabase SQL Editor
+-- Class of 2027 Portal — run this entire file in Supabase SQL Editor.
+--
+-- NOTE: this file reflects the *original* setup only. Later additions
+-- (Roqué de Duprey / Betances groups, per-person "mark done" tracking,
+-- and the assignment help-request list) live in
+-- supabase/migration_groups_and_completions.sql — run that file too
+-- (once) on top of this one if you haven't already.
 
 -- ─── Tables ───────────────────────────────────────────────────────────────
 

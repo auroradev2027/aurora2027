@@ -4,21 +4,66 @@ import { useAdmin } from '../context/AdminContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getLocale } from '../lib/translations'
 
+const GROUP_STORAGE_KEY = 'aurora_cycle_group'
+
 // Times are universal (numeric), so they aren't translated — course names and
 // teacher names come from the translation dictionary / are proper nouns.
-const CYCLE_1_TIMES = [
+
+// ─── ROQUÉ DE DUPREY ─── confirmed schedule ────────────────────────────────
+const ROQUE_CYCLE_1_TIMES = [
   '8:00 am – 9:20 am',
   '9:20 am – 10:40 am',
   '10:40 am – 12:00 pm',
   '2:00 pm – 3:20 pm',
   '3:35 pm – 5:00 pm',
 ]
-const CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
-const CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
+const ROQUE_CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
+const ROQUE_CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
 
-const CYCLE_2_TIMES = CYCLE_1_TIMES
-const CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
-const CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
+const ROQUE_CYCLE_2_TIMES = ROQUE_CYCLE_1_TIMES
+const ROQUE_CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
+const ROQUE_CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
+
+// ─── BETANCES ─── confirmed schedule ───────────────────────────────────────
+const BETANCES_CYCLE_1_TIMES = ROQUE_CYCLE_1_TIMES
+const BETANCES_CYCLE_1_COURSE_KEYS = ['spanishAdv', 'pe', 'englishAdv', 'calc', 'physics']
+const BETANCES_CYCLE_1_TEACHERS = ['Lilliana', 'Yohanny', 'Jessenia', 'Melo', 'Nicole']
+
+const BETANCES_CYCLE_2_TIMES = ROQUE_CYCLE_2_TIMES
+const BETANCES_CYCLE_2_COURSE_KEYS = ['englishConv', 'trig', 'socio', 'agro', 'firstAid']
+const BETANCES_CYCLE_2_TEACHERS = ['Heldys', 'Melo', 'Alexandra', 'Yessenia', 'Wilfredo']
+
+const GROUPS = [
+  {
+    key: 'roque',
+    labelKey: 'cycles.groupRoque',
+    cycle1: { times: ROQUE_CYCLE_1_TIMES, courseKeys: ROQUE_CYCLE_1_COURSE_KEYS, teachers: ROQUE_CYCLE_1_TEACHERS },
+    cycle2: { times: ROQUE_CYCLE_2_TIMES, courseKeys: ROQUE_CYCLE_2_COURSE_KEYS, teachers: ROQUE_CYCLE_2_TEACHERS },
+  },
+  {
+    key: 'betances',
+    labelKey: 'cycles.groupBetances',
+    cycle1: {
+      times: BETANCES_CYCLE_1_TIMES,
+      courseKeys: BETANCES_CYCLE_1_COURSE_KEYS,
+      teachers: BETANCES_CYCLE_1_TEACHERS,
+    },
+    cycle2: {
+      times: BETANCES_CYCLE_2_TIMES,
+      courseKeys: BETANCES_CYCLE_2_COURSE_KEYS,
+      teachers: BETANCES_CYCLE_2_TEACHERS,
+    },
+  },
+]
+
+function readStoredGroup() {
+  try {
+    const stored = localStorage.getItem(GROUP_STORAGE_KEY)
+    return GROUPS.some((g) => g.key === stored) ? stored : 'roque'
+  } catch {
+    return 'roque'
+  }
+}
 
 function toDateKey(date) {
   const y = date.getFullYear()
@@ -51,6 +96,12 @@ function getUpcomingFridays(count) {
   return fridays
 }
 
+// Key used in the in-memory friday-cycle map: date + group, since each group
+// can run a different cycle on the same Friday.
+function fridayMapKey(dateKey, groupKey) {
+  return `${dateKey}|${groupKey}`
+}
+
 export default function Cycles() {
   const { isAdmin } = useAdmin()
   const { t, lang } = useLanguage()
@@ -58,12 +109,24 @@ export default function Cycles() {
   const [fridayCycles, setFridayCycles] = useState({})
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState(null)
+  const [selectedGroup, setSelectedGroup] = useState(readStoredGroup)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GROUP_STORAGE_KEY, selectedGroup)
+    } catch {
+      // ignore storage errors (private browsing, etc.)
+    }
+  }, [selectedGroup])
 
   const loadFridayCycles = useCallback(async () => {
     const { data, error } = await supabase.from('friday_cycles').select('*')
     if (!error) {
       const map = {}
-      for (const row of data ?? []) map[row.friday_date] = row.cycle
+      for (const row of data ?? []) {
+        const groupKey = row.class_group ?? 'roque'
+        map[fridayMapKey(row.friday_date, groupKey)] = row.cycle
+      }
       setFridayCycles(map)
     }
     setLoading(false)
@@ -81,13 +144,18 @@ export default function Cycles() {
     if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 1, isFriday: false }
     if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 2, isFriday: false }
     if (todayWeekday === 5) {
-      const cycle = fridayCycles[todayKey]
+      const cycle = fridayCycles[fridayMapKey(todayKey, selectedGroup)]
       return { cycle: cycle ?? null, isFriday: true }
     }
     return { cycle: null, isFriday: false, isWeekend: true }
-  }, [todayWeekday, todayKey, fridayCycles])
+  }, [todayWeekday, todayKey, fridayCycles, selectedGroup])
 
   const upcomingFridays = useMemo(() => getUpcomingFridays(10), [])
+
+  const activeGroup = useMemo(
+    () => GROUPS.find((g) => g.key === selectedGroup) ?? GROUPS[0],
+    [selectedGroup],
+  )
 
   const cycles = useMemo(
     () => [
@@ -95,31 +163,35 @@ export default function Cycles() {
         key: 'cycle1',
         label: t('cycles.cycle1Label'),
         days: t('cycles.cycle1Days'),
-        periods: CYCLE_1_COURSE_KEYS.map((courseKey, i) => ({
-          time: CYCLE_1_TIMES[i],
+        periods: activeGroup.cycle1.courseKeys.map((courseKey, i) => ({
+          time: activeGroup.cycle1.times[i],
           course: t(`cycles.courses.${courseKey}`),
-          teacher: CYCLE_1_TEACHERS[i],
+          teacher: activeGroup.cycle1.teachers[i],
         })),
       },
       {
         key: 'cycle2',
         label: t('cycles.cycle2Label'),
         days: t('cycles.cycle2Days'),
-        periods: CYCLE_2_COURSE_KEYS.map((courseKey, i) => ({
-          time: CYCLE_2_TIMES[i],
+        periods: activeGroup.cycle2.courseKeys.map((courseKey, i) => ({
+          time: activeGroup.cycle2.times[i],
           course: t(`cycles.courses.${courseKey}`),
-          teacher: CYCLE_2_TEACHERS[i],
+          teacher: activeGroup.cycle2.teachers[i],
         })),
       },
     ],
-    [t],
+    [t, activeGroup],
   )
 
   async function setFridayCycle(dateKey, cycle) {
-    setSavingKey(dateKey)
+    const key = fridayMapKey(dateKey, selectedGroup)
+    setSavingKey(key)
     const { error } = await supabase
       .from('friday_cycles')
-      .upsert({ friday_date: dateKey, cycle }, { onConflict: 'friday_date' })
+      .upsert(
+        { friday_date: dateKey, cycle, class_group: selectedGroup },
+        { onConflict: 'friday_date,class_group' },
+      )
 
     setSavingKey(null)
     if (error) {
@@ -134,6 +206,26 @@ export default function Cycles() {
       <div>
         <h2 className="text-2xl font-semibold text-slate-900">{t('cycles.heading')}</h2>
         <p className="mt-1 text-slate-600">{t('cycles.subheading')}</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-slate-600">{t('cycles.selectGroup')}</span>
+        <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1">
+          {GROUPS.map((group) => (
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => setSelectedGroup(group.key)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                selectedGroup === group.key
+                  ? 'bg-coral-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t(group.labelKey)}
+            </button>
+          ))}
+        </div>
       </div>
 
       <section className="rounded-2xl border border-coral-200 bg-coral-50 p-5 shadow-sm">
@@ -190,7 +282,9 @@ export default function Cycles() {
 
       {isAdmin && (
         <section className="rounded-xl border border-coral-200 bg-coral-50/50 p-5 shadow-sm">
-          <h3 className="font-semibold text-coral-900">{t('cycles.manageHeading')}</h3>
+          <h3 className="font-semibold text-coral-900">
+            {t('cycles.manageHeading')} — {t(activeGroup.labelKey)}
+          </h3>
           <p className="mt-1 text-sm text-coral-700/80">{t('cycles.manageSubheading')}</p>
 
           {loading ? (
@@ -198,11 +292,12 @@ export default function Cycles() {
           ) : (
             <ul className="mt-4 space-y-2">
               {upcomingFridays.map((date) => {
-                const key = toDateKey(date)
-                const current = fridayCycles[key] ?? ''
+                const dateKey = toDateKey(date)
+                const mapKey = fridayMapKey(dateKey, selectedGroup)
+                const current = fridayCycles[mapKey] ?? ''
                 return (
                   <li
-                    key={key}
+                    key={mapKey}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5"
                   >
                     <span className="text-sm font-medium text-slate-800">
@@ -215,8 +310,8 @@ export default function Cycles() {
                     </span>
                     <select
                       value={current}
-                      disabled={savingKey === key}
-                      onChange={(e) => setFridayCycle(key, Number(e.target.value))}
+                      disabled={savingKey === mapKey}
+                      onChange={(e) => setFridayCycle(dateKey, Number(e.target.value))}
                       className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm disabled:opacity-50"
                     >
                       <option value="" disabled>
