@@ -1,0 +1,19 @@
+{
+  "name": "Aurora Portal",
+  "short_name": "Aurora Portal",
+  "description": "Aurora Portal for the Class of 2027.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

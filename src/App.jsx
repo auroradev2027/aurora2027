@@ -8,6 +8,7 @@ import Cycles from './pages/Cycles'
 import Assignments from './pages/Assignments'
 import Resources from './pages/Resources'
 import Calendar from './pages/Calendar'
+import InstallPrompt from './components/InstallPrompt'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <div className="min-h-screen bg-white">
             <Header />
             <AdminPinModal />
+            <InstallPrompt />
             <main className="mx-auto max-w-6xl px-4 py-8">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
