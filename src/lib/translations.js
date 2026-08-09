@@ -154,7 +154,7 @@ export const translations = {
       editTitle: 'Edit Title',
       deleteConfirm: 'Delete "{name}"? This cannot be undone.',
       categories: {
-        'Study Guides': 'Study Guides',
+        'Study Guides': 'Other',
         'Test Summaries': 'Test Summaries',
         'College Apps': 'College Apps',
       },
@@ -344,7 +344,7 @@ export const translations = {
       editTitle: 'Editar Título',
       deleteConfirm: '¿Eliminar "{name}"? Esto no se puede deshacer.',
       categories: {
-        'Study Guides': 'Guías de Estudio',
+        'Study Guides': 'Otro',
         'Test Summaries': 'Resúmenes de Exámenes',
         'College Apps': 'Aplicaciones Universitarias',
       },
