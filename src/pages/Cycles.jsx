@@ -141,11 +141,11 @@ export default function Cycles() {
   const todayWeekday = today.getDay()
 
   const todayStatus = useMemo(() => {
-    if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 1, isFriday: false }
-    if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 2, isFriday: false }
+    if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 2, isFriday: false }
+    if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 1, isFriday: false }
     if (todayWeekday === 5) {
       const cycle = fridayCycles[fridayMapKey(todayKey, selectedGroup)]
-      return { cycle: cycle ?? null, isFriday: true }
+      return { cycle: cycle == null ? null : 3 - Number(cycle), isFriday: true }
     }
     return { cycle: null, isFriday: false, isWeekend: true }
   }, [todayWeekday, todayKey, fridayCycles, selectedGroup])
@@ -329,4 +329,4 @@ export default function Cycles() {
       )}
     </div>
   )
-}
+          }
