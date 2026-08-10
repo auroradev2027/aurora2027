@@ -4,65 +4,21 @@ import { useAdmin } from '../context/AdminContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getLocale } from '../lib/translations'
 
-const GROUP_STORAGE_KEY = 'aurora_cycle_group'
+const emptyRequest = {
+  proposed_title: '',
+  proposed_date: '',
+  proposed_description: '',
+  requester_name: '',
+}
 
-// Times are universal (numeric), so they aren't translated — course names and
-// teacher names come from the translation dictionary / are proper nouns.
+const emptyNewEvent = {
+  title: '',
+  description: '',
+}
 
-// ─── ROQUÉ DE DUPREY ─── confirmed schedule ────────────────────────────────
-const ROQUE_CYCLE_1_TIMES = [
-  '8:00 am – 9:20 am',
-  '9:20 am – 10:40 am',
-  '10:40 am – 12:00 pm',
-  '2:00 pm – 3:20 pm',
-  '3:35 pm – 5:00 pm',
-]
-const ROQUE_CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
-const ROQUE_CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
-
-const ROQUE_CYCLE_2_TIMES = ROQUE_CYCLE_1_TIMES
-const ROQUE_CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
-const ROQUE_CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
-
-// ─── BETANCES ─── confirmed schedule ───────────────────────────────────────
-const BETANCES_CYCLE_1_TIMES = ROQUE_CYCLE_1_TIMES
-const BETANCES_CYCLE_1_COURSE_KEYS = ['spanishAdv', 'pe', 'englishAdv', 'calc', 'physics']
-const BETANCES_CYCLE_1_TEACHERS = ['Lilliana', 'Yohanny', 'Jessenia', 'Melo', 'Nicole']
-
-const BETANCES_CYCLE_2_TIMES = ROQUE_CYCLE_2_TIMES
-const BETANCES_CYCLE_2_COURSE_KEYS = ['englishConv', 'trig', 'socio', 'agro', 'firstAid']
-const BETANCES_CYCLE_2_TEACHERS = ['Heldys', 'Melo', 'Alexandra', 'Yessenia', 'Wilfredo']
-
-const GROUPS = [
-  {
-    key: 'roque',
-    labelKey: 'cycles.groupRoque',
-    cycle1: { times: ROQUE_CYCLE_1_TIMES, courseKeys: ROQUE_CYCLE_1_COURSE_KEYS, teachers: ROQUE_CYCLE_1_TEACHERS },
-    cycle2: { times: ROQUE_CYCLE_2_TIMES, courseKeys: ROQUE_CYCLE_2_COURSE_KEYS, teachers: ROQUE_CYCLE_2_TEACHERS },
-  },
-  {
-    key: 'betances',
-    labelKey: 'cycles.groupBetances',
-    cycle1: {
-      times: BETANCES_CYCLE_1_TIMES,
-      courseKeys: BETANCES_CYCLE_1_COURSE_KEYS,
-      teachers: BETANCES_CYCLE_1_TEACHERS,
-    },
-    cycle2: {
-      times: BETANCES_CYCLE_2_TIMES,
-      courseKeys: BETANCES_CYCLE_2_COURSE_KEYS,
-      teachers: BETANCES_CYCLE_2_TEACHERS,
-    },
-  },
-]
-
-function readStoredGroup() {
-  try {
-    const stored = localStorage.getItem(GROUP_STORAGE_KEY)
-    return GROUPS.some((g) => g.key === stored) ? stored : 'roque'
-  } catch {
-    return 'roque'
-  }
+const emptyEditEvent = {
+  title: '',
+  description: '',
 }
 
 function toDateKey(date) {
@@ -81,259 +37,464 @@ function formatDateKey(key, locale) {
   })
 }
 
-// Builds the next `count` Fridays starting from today (includes today if it's a Friday).
-function getUpcomingFridays(count) {
-  const fridays = []
-  const cursor = new Date()
-  cursor.setHours(0, 0, 0, 0)
-  const offset = (5 - cursor.getDay() + 7) % 7
-  cursor.setDate(cursor.getDate() + offset)
-
-  for (let i = 0; i < count; i += 1) {
-    fridays.push(new Date(cursor))
-    cursor.setDate(cursor.getDate() + 7)
-  }
-  return fridays
-}
-
-// Key used in the in-memory friday-cycle map: date + group, since each group
-// can run a different cycle on the same Friday.
-function fridayMapKey(dateKey, groupKey) {
-  return `${dateKey}|${groupKey}`
-}
-
-export default function Cycles() {
+export default function Calendar() {
   const { isAdmin } = useAdmin()
   const { t, lang } = useLanguage()
   const locale = getLocale(lang)
-  const [fridayCycles, setFridayCycles] = useState({})
+  const weekdays = t('calendar.weekdays')
+  const [viewDate, setViewDate] = useState(() => new Date())
+  const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [savingKey, setSavingKey] = useState(null)
-  const [selectedGroup, setSelectedGroup] = useState(readStoredGroup)
+  const [form, setForm] = useState(emptyRequest)
+  const [submitting, setSubmitting] = useState(false)
+  const [message, setMessage] = useState('')
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(GROUP_STORAGE_KEY, selectedGroup)
-    } catch {
-      // ignore storage errors (private browsing, etc.)
-    }
-  }, [selectedGroup])
+  const [selectedDateKey, setSelectedDateKey] = useState(null)
+  const [addingEvent, setAddingEvent] = useState(false)
+  const [newEvent, setNewEvent] = useState(emptyNewEvent)
+  const [savingNewEvent, setSavingNewEvent] = useState(false)
+  const [editingEventId, setEditingEventId] = useState(null)
+  const [editEvent, setEditEvent] = useState(emptyEditEvent)
+  const [savingEditEvent, setSavingEditEvent] = useState(false)
 
-  const loadFridayCycles = useCallback(async () => {
-    const { data, error } = await supabase.from('friday_cycles').select('*')
-    if (!error) {
-      const map = {}
-      for (const row of data ?? []) {
-        const groupKey = row.class_group ?? 'roque'
-        map[fridayMapKey(row.friday_date, groupKey)] = row.cycle
-      }
-      setFridayCycles(map)
-    }
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+
+  const loadEvents = useCallback(async () => {
+    const start = toDateKey(new Date(year, month, 1))
+    const end = toDateKey(new Date(year, month + 1, 0))
+
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .gte('event_date', start)
+      .lte('event_date', end)
+      .order('event_date', { ascending: true })
+
+    if (!error) setEvents(data ?? [])
     setLoading(false)
-  }, [])
+  }, [year, month])
 
   useEffect(() => {
-    loadFridayCycles()
-  }, [loadFridayCycles])
+    setLoading(true)
+    loadEvents()
+  }, [loadEvents])
 
-  const today = useMemo(() => new Date(), [])
-  const todayKey = toDateKey(today)
-  const todayWeekday = today.getDay()
+  const eventsByDate = useMemo(() => {
+    return events.reduce((acc, event) => {
+      if (!acc[event.event_date]) acc[event.event_date] = []
+      acc[event.event_date].push(event)
+      return acc
+    }, {})
+  }, [events])
 
-  // The schedules stored in the app use the original/internal numbering,
-  // but the real class cycle numbering is the opposite:
-  // internal Cycle 1 = real Cycle 2
-  // internal Cycle 2 = real Cycle 1.
-  const getDisplayCycle = (cycle) => (cycle == null ? null : 3 - Number(cycle))
+  const selectedDayEvents = selectedDateKey ? eventsByDate[selectedDateKey] ?? [] : []
 
-  const todayStatus = useMemo(() => {
-    // Monday/Wednesday use the internal Cycle 1 schedule, which is
-    // actually Cycle 2. Tuesday/Thursday are the opposite.
-    if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 2, isFriday: false }
-    if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 1, isFriday: false }
-    if (todayWeekday === 5) {
-      const storedCycle = fridayCycles[fridayMapKey(todayKey, selectedGroup)]
-      return { cycle: getDisplayCycle(storedCycle), isFriday: true }
+  const calendarCells = useMemo(() => {
+    const firstDay = new Date(year, month, 1).getDay()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const cells = []
+
+    for (let i = 0; i < firstDay; i += 1) cells.push(null)
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      cells.push(new Date(year, month, day))
     }
-    return { cycle: null, isFriday: false, isWeekend: true }
-  }, [todayWeekday, todayKey, fridayCycles, selectedGroup])
+    return cells
+  }, [year, month])
 
-  const upcomingFridays = useMemo(() => getUpcomingFridays(10), [])
+  function prevMonth() {
+    setViewDate(new Date(year, month - 1, 1))
+  }
 
-  const activeGroup = useMemo(
-    () => GROUPS.find((g) => g.key === selectedGroup) ?? GROUPS[0],
-    [selectedGroup],
-  )
+  function nextMonth() {
+    setViewDate(new Date(year, month + 1, 1))
+  }
 
-  const cycles = useMemo(
-    () => [
-      {
-        key: 'cycle1',
-        label: t('cycles.cycle1Label'),
-        days: t('cycles.cycle1Days'),
-        periods: activeGroup.cycle1.courseKeys.map((courseKey, i) => ({
-          time: activeGroup.cycle1.times[i],
-          course: t(`cycles.courses.${courseKey}`),
-          teacher: activeGroup.cycle1.teachers[i],
-        })),
-      },
-      {
-        key: 'cycle2',
-        label: t('cycles.cycle2Label'),
-        days: t('cycles.cycle2Days'),
-        periods: activeGroup.cycle2.courseKeys.map((courseKey, i) => ({
-          time: activeGroup.cycle2.times[i],
-          course: t(`cycles.courses.${courseKey}`),
-          teacher: activeGroup.cycle2.teachers[i],
-        })),
-      },
-    ],
-    [t, activeGroup],
-  )
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    setMessage('')
 
-  async function setFridayCycle(dateKey, cycle) {
-    const key = fridayMapKey(dateKey, selectedGroup)
-    setSavingKey(key)
-    const { error } = await supabase
-      .from('friday_cycles')
-      .upsert(
-        { friday_date: dateKey, cycle, class_group: selectedGroup },
-        { onConflict: 'friday_date,class_group' },
-      )
+    const { error } = await supabase.from('edit_requests').insert({
+      proposed_title: form.proposed_title.trim(),
+      proposed_date: form.proposed_date,
+      proposed_description: form.proposed_description.trim(),
+      requester_name: form.requester_name.trim(),
+      status: 'pending',
+    })
 
-    setSavingKey(null)
+    setSubmitting(false)
     if (error) {
-      alert(`Could not save: ${error.message}`)
+      setMessage(`Could not submit: ${error.message}`)
       return
     }
-    loadFridayCycles()
+
+    setForm(emptyRequest)
+    setMessage(t('calendar.submitSuccess'))
   }
+
+  function openDayModal(dateKey) {
+    setSelectedDateKey(dateKey)
+    setAddingEvent(false)
+    setNewEvent(emptyNewEvent)
+    setEditingEventId(null)
+  }
+
+  function closeDayModal() {
+    setSelectedDateKey(null)
+    setAddingEvent(false)
+    setNewEvent(emptyNewEvent)
+    setEditingEventId(null)
+  }
+
+  async function handleAddEvent(e) {
+    e.preventDefault()
+    if (!selectedDateKey) return
+    setSavingNewEvent(true)
+
+    const { error } = await supabase.from('calendar_events').insert({
+      title: newEvent.title.trim(),
+      description: newEvent.description.trim() || null,
+      event_date: selectedDateKey,
+    })
+
+    setSavingNewEvent(false)
+    if (error) {
+      alert(`Could not add event: ${error.message}`)
+      return
+    }
+
+    setNewEvent(emptyNewEvent)
+    loadEvents()
+  }
+
+  function startEditEvent(event) {
+    setEditingEventId(event.id)
+    setEditEvent({ title: event.title ?? '', description: event.description ?? '' })
+  }
+
+  async function handleSaveEditEvent(e) {
+    e.preventDefault()
+    setSavingEditEvent(true)
+
+    const { error } = await supabase
+      .from('calendar_events')
+      .update({
+        title: editEvent.title.trim(),
+        description: editEvent.description.trim() || null,
+      })
+      .eq('id', editingEventId)
+
+    setSavingEditEvent(false)
+    if (error) {
+      alert(`Could not save event: ${error.message}`)
+      return
+    }
+
+    setEditingEventId(null)
+    loadEvents()
+  }
+
+  async function handleDeleteEvent(event) {
+    if (!confirm(t('calendar.deleteEventConfirm', { name: event.title }))) return
+
+    const { error } = await supabase.from('calendar_events').delete().eq('id', event.id)
+    if (error) {
+      alert(`Could not delete event: ${error.message}`)
+      return
+    }
+    loadEvents()
+  }
+
+  const monthLabel = viewDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">{t('cycles.heading')}</h2>
-        <p className="mt-1 text-slate-600">{t('cycles.subheading')}</p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t('calendar.heading')}</h2>
+        <p className="mt-1 text-slate-600">{t('calendar.subheading')}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-slate-600">{t('cycles.selectGroup')}</span>
-        <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1">
-          {GROUPS.map((group) => (
-            <button
-              key={group.key}
-              type="button"
-              onClick={() => setSelectedGroup(group.key)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                selectedGroup === group.key
-                  ? 'bg-coral-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {t(group.labelKey)}
-            </button>
-          ))}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            {t('calendar.prevMonth')}
+          </button>
+          <h3 className="text-lg font-semibold capitalize text-slate-900">{monthLabel}</h3>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            {t('calendar.nextMonth')}
+          </button>
         </div>
-      </div>
 
-      <section className="rounded-2xl border border-coral-200 bg-coral-50 p-5 shadow-sm">
-        <p className="text-sm font-medium text-coral-700">{formatDateKey(todayKey, locale)}</p>
-        <div className="mt-2 flex items-center gap-2">
-          {todayStatus.isWeekend ? (
-            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-600">
-              {t('cycles.noClasses')}
-            </span>
-          ) : todayStatus.isFriday && !todayStatus.cycle ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">
-              {t('cycles.fridayNotSet')}
-            </span>
-          ) : (
-            <span className="rounded-full bg-gold-400 px-3 py-1 text-sm font-semibold text-white">
-              {todayStatus.isFriday
-                ? `${t('cycles.fridayCycle')} ${todayStatus.cycle}`
-                : `${t('cycles.cycle')} ${todayStatus.cycle}`}
-            </span>
-          )}
-        </div>
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {cycles.map(({ key, label, days, periods }) => (
-          <div key={key} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <h3 className="font-semibold text-slate-900">{label}</h3>
-              <p className="text-xs text-slate-500">{days}</p>
+        {loading ? (
+          <p className="text-slate-500">{t('calendar.loading')}</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500">
+              {weekdays.map((day) => (
+                <div key={day} className="py-2">
+                  {day}
+                </div>
+              ))}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-500">
-                    <th className="px-4 py-2 font-medium">{t('cycles.time')}</th>
-                    <th className="px-4 py-2 font-medium">{t('cycles.classCol')}</th>
-                    <th className="px-4 py-2 font-medium">{t('cycles.teacher')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {periods.map((row) => (
-                    <tr key={row.time} className="border-b border-slate-50 last:border-0">
-                      <td className="px-4 py-2.5 text-slate-600">{row.time}</td>
-                      <td className="px-4 py-2.5 font-medium text-slate-900">{row.course}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{row.teacher}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-      </div>
+            <div className="grid grid-cols-7 gap-1">
+              {calendarCells.map((date, index) => {
+                if (!date) {
+                  return <div key={`empty-${index}`} className="min-h-20 rounded-lg bg-slate-50" />
+                }
 
-      {isAdmin && (
-        <section className="rounded-xl border border-coral-200 bg-coral-50/50 p-5 shadow-sm">
-          <h3 className="font-semibold text-coral-900">
-            {t('cycles.manageHeading')} — {t(activeGroup.labelKey)}
-          </h3>
-          <p className="mt-1 text-sm text-coral-700/80">{t('cycles.manageSubheading')}</p>
+                const key = toDateKey(date)
+                const dayEvents = eventsByDate[key] ?? []
+                const isToday = key === toDateKey(new Date())
 
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">{t('common.loading')}</p>
-          ) : (
-            <ul className="mt-4 space-y-2">
-              {upcomingFridays.map((date) => {
-                const dateKey = toDateKey(date)
-                const mapKey = fridayMapKey(dateKey, selectedGroup)
-                const current = fridayCycles[mapKey] ?? ''
                 return (
-                  <li
-                    key={mapKey}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5"
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => openDayModal(key)}
+                    className={`min-h-20 rounded-lg border p-1.5 text-left transition hover:border-coral-300 hover:shadow-sm ${
+                      isToday ? 'border-coral-400 bg-coral-50' : 'border-slate-100 bg-white'
+                    }`}
                   >
-                    <span className="text-sm font-medium text-slate-800">
-                      {date.toLocaleDateString(locale, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </span>
-                    <select
-                      value={current}
-                      disabled={savingKey === mapKey}
-                      onChange={(e) => setFridayCycle(dateKey, Number(e.target.value))}
-                      className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm disabled:opacity-50"
+                    <span
+                      className={`text-xs font-semibold ${
+                        isToday ? 'text-coral-700' : 'text-slate-700'
+                      }`}
                     >
-                      <option value="" disabled>
-                        {t('common.notSet')}
-                      </option>
-                      <option value={1}>{t('cycles.cycle1Label')}</option>
-                      <option value={2}>{t('cycles.cycle2Label')}</option>
-                    </select>
-                  </li>
+                      {date.getDate()}
+                    </span>
+                    <ul className="mt-1 space-y-0.5">
+                      {dayEvents.map((event) => (
+                        <li
+                          key={event.id}
+                          title={event.description ?? ''}
+                          className="truncate rounded bg-coral-100 px-1 py-0.5 text-[10px] font-medium text-coral-800"
+                        >
+                          {event.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </button>
                 )
               })}
-            </ul>
-          )}
-        </section>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="font-semibold text-slate-900">{t('calendar.requestHeading')}</h3>
+        <p className="mt-1 text-sm text-slate-600">{t('calendar.requestSubheading')}</p>
+
+        <form onSubmit={handleSubmit} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input
+            required
+            value={form.proposed_title}
+            onChange={(e) => setForm({ ...form, proposed_title: e.target.value })}
+            placeholder={t('calendar.eventTitlePlaceholder')}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <input
+            required
+            type="date"
+            value={form.proposed_date}
+            onChange={(e) => setForm({ ...form, proposed_date: e.target.value })}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <input
+            required
+            value={form.requester_name}
+            onChange={(e) => setForm({ ...form, requester_name: e.target.value })}
+            placeholder={t('calendar.yourNamePlaceholder')}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <textarea
+            value={form.proposed_description}
+            onChange={(e) => setForm({ ...form, proposed_description: e.target.value })}
+            placeholder={t('calendar.descriptionOptionalPlaceholder')}
+            rows={2}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+          />
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700 disabled:opacity-50"
+            >
+              {submitting ? t('calendar.submitting') : t('calendar.submit')}
+            </button>
+            {message && <p className="mt-2 text-sm text-emerald-700">{message}</p>}
+          </div>
+        </form>
+      </section>
+
+      {selectedDateKey && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeDayModal}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold capitalize text-slate-900">
+                {formatDateKey(selectedDateKey, locale)}
+              </h2>
+              <button
+                type="button"
+                onClick={closeDayModal}
+                className="text-slate-400 hover:text-slate-600"
+                aria-label={t('common.close')}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {selectedDayEvents.length === 0 ? (
+                <p className="text-sm text-slate-500">{t('calendar.noEventsDay')}</p>
+              ) : (
+                selectedDayEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    {editingEventId === event.id ? (
+                      <form onSubmit={handleSaveEditEvent} className="space-y-2">
+                        <input
+                          required
+                          value={editEvent.title}
+                          onChange={(e) =>
+                            setEditEvent({ ...editEvent, title: e.target.value })
+                          }
+                          placeholder={t('calendar.eventTitlePlaceholder')}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                        <textarea
+                          value={editEvent.description}
+                          onChange={(e) =>
+                            setEditEvent({ ...editEvent, description: e.target.value })
+                          }
+                          placeholder={t('calendar.descriptionOptionalPlaceholder')}
+                          rows={2}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingEventId(null)}
+                            className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            {t('common.cancel')}
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={savingEditEvent}
+                            className="flex-1 rounded-lg bg-coral-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
+                          >
+                            {savingEditEvent ? t('common.saving') : t('common.save')}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-slate-900">{event.title}</p>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                          {event.description ? event.description : (
+                            <span className="text-slate-400">{t('calendar.noDescription')}</span>
+                          )}
+                        </p>
+                        {isAdmin && (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditEvent(event)}
+                              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-white"
+                            >
+                              {t('common.edit')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEvent(event)}
+                              className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                            >
+                              {t('common.delete')}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {isAdmin && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                {!addingEvent ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddingEvent(true)}
+                    className="rounded-lg bg-coral-600 px-4 py-2 text-sm font-medium text-white hover:bg-coral-700"
+                  >
+                    {t('calendar.addEvent')}
+                  </button>
+                ) : (
+                  <form onSubmit={handleAddEvent} className="space-y-2">
+                    <p className="text-xs font-medium text-slate-500">{t('calendar.newEvent')}</p>
+                    <input
+                      required
+                      autoFocus
+                      value={newEvent.title}
+                      onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                      placeholder={t('calendar.eventTitlePlaceholder')}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <textarea
+                      value={newEvent.description}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, description: e.target.value })
+                      }
+                      placeholder={t('calendar.descriptionOptionalPlaceholder')}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddingEvent(false)
+                          setNewEvent(emptyNewEvent)
+                        }}
+                        className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        {t('common.cancel')}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingNewEvent}
+                        className="flex-1 rounded-lg bg-coral-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-coral-700 disabled:opacity-50"
+                      >
+                        {savingNewEvent ? t('calendar.adding') : t('calendar.addEvent').replace('+ ', '')}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
