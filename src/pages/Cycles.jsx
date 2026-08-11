@@ -17,21 +17,21 @@ const ROQUE_CYCLE_1_TIMES = [
   '2:00 pm – 3:20 pm',
   '3:35 pm – 5:00 pm',
 ]
-const ROQUE_CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
-const ROQUE_CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
+const ROQUE_CYCLE_1_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
+const ROQUE_CYCLE_1_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
 
 const ROQUE_CYCLE_2_TIMES = ROQUE_CYCLE_1_TIMES
-const ROQUE_CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
-const ROQUE_CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
+const ROQUE_CYCLE_2_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
+const ROQUE_CYCLE_2_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
 
 // ─── BETANCES ─── confirmed schedule ───────────────────────────────────────
 const BETANCES_CYCLE_1_TIMES = ROQUE_CYCLE_1_TIMES
-const BETANCES_CYCLE_1_COURSE_KEYS = ['spanishAdv', 'pe', 'englishAdv', 'calc', 'physics']
-const BETANCES_CYCLE_1_TEACHERS = ['Lilliana', 'Yohanny', 'Jessenia', 'Melo', 'Nicole']
+const BETANCES_CYCLE_1_COURSE_KEYS = ['englishConv', 'pe', 'englishAdv', 'calc', 'physics']
+const BETANCES_CYCLE_1_TEACHERS = ['Heldys', 'Yohanny', 'Jessenia', 'Melo', 'Nicole']
 
 const BETANCES_CYCLE_2_TIMES = ROQUE_CYCLE_2_TIMES
-const BETANCES_CYCLE_2_COURSE_KEYS = ['englishConv', 'trig', 'socio', 'agro', 'firstAid']
-const BETANCES_CYCLE_2_TEACHERS = ['Heldys', 'Melo', 'Alexandra', 'Yessenia', 'Wilfredo']
+const BETANCES_CYCLE_2_COURSE_KEYS = ['spanishAdv', 'trig', 'socio', 'agro', 'firstAid']
+const BETANCES_CYCLE_2_TEACHERS = ['Lilliana', 'Melo', 'Alexandra', 'Yessenia', 'Wilfredo']
 
 const GROUPS = [
   {
@@ -141,11 +141,11 @@ export default function Cycles() {
   const todayWeekday = today.getDay()
 
   const todayStatus = useMemo(() => {
-    if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 2, isFriday: false }
-    if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 1, isFriday: false }
+    if (todayWeekday === 1 || todayWeekday === 3) return { cycle: 1, isFriday: false }
+    if (todayWeekday === 2 || todayWeekday === 4) return { cycle: 2, isFriday: false }
     if (todayWeekday === 5) {
       const cycle = fridayCycles[fridayMapKey(todayKey, selectedGroup)]
-      return { cycle: cycle == null ? null : 3 - Number(cycle), isFriday: true }
+      return { cycle: cycle ?? null, isFriday: true }
     }
     return { cycle: null, isFriday: false, isWeekend: true }
   }, [todayWeekday, todayKey, fridayCycles, selectedGroup])
@@ -329,4 +329,4 @@ export default function Cycles() {
       )}
     </div>
   )
-          }
+}
