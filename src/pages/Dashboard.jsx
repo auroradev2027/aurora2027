@@ -4,7 +4,7 @@ import { useAdmin } from '../context/AdminContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getLocale } from '../lib/translations'
 
-const GRADUATION_DATE = new Date('2027-06-12T00:00:00')
+const GRADUATION_DATE = new Date('2027-06-11T00:00:00')
 
 function getCountdown() {
   const now = new Date()
