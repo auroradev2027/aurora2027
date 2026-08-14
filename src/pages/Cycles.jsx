@@ -17,12 +17,12 @@ const ROQUE_CYCLE_1_TIMES = [
   '2:00 pm – 3:20 pm',
   '3:35 pm – 5:00 pm',
 ]
-const ROQUE_CYCLE_1_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
-const ROQUE_CYCLE_1_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
+const ROQUE_CYCLE_1_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
+const ROQUE_CYCLE_1_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
 
 const ROQUE_CYCLE_2_TIMES = ROQUE_CYCLE_1_TIMES
-const ROQUE_CYCLE_2_COURSE_KEYS = ['socio', 'trig', 'englishConv', 'agro', 'firstAid']
-const ROQUE_CYCLE_2_TEACHERS = ['Alexandra', 'Melo', 'Heldys', 'Yessenia', 'Wilfredo']
+const ROQUE_CYCLE_2_COURSE_KEYS = ['calc', 'pe', 'spanishAdv', 'englishAdv', 'physics']
+const ROQUE_CYCLE_2_TEACHERS = ['Melo', 'Yohanny', 'Lilliana', 'Jessenia', 'Nicole']
 
 // ─── BETANCES ─── confirmed schedule ───────────────────────────────────────
 const BETANCES_CYCLE_1_TIMES = ROQUE_CYCLE_1_TIMES
